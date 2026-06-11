@@ -1,6 +1,11 @@
-# Explicit build-script decisions for dependencies with install scripts.
-# Required by pnpm v11 — without an explicit decision pnpm errors with
-# ERR_PNPM_IGNORED_BUILDS, which would break the Railway build/start step.
+# Non-empty `packages` keeps older pnpm (9.x, used by Railway Nixpacks) from
+# erroring with "packages field missing or empty". No real sub-packages exist,
+# so the glob intentionally matches nothing — this stays a single-app repo.
+packages:
+  - 'packages/*'
+# Build-script decisions for pnpm 10+ (local). Without an explicit decision pnpm
+# errors with ERR_PNPM_IGNORED_BUILDS. pnpm 9 reads onlyBuiltDependencies from
+# package.json instead and ignores this key.
 allowBuilds:
   '@scarf/scarf': false # telemetry only; no build needed
   esbuild: true
