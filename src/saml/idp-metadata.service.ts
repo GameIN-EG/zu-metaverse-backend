@@ -26,7 +26,14 @@ export class IdpMetadataService implements OnModuleInit {
       return;
     }
 
-    await this.refreshMetadata('startup');
+    // Never let a startup metadata/DB hiccup crash the whole app — certs will
+    // be (re)loaded on the next scheduled refresh or on first SAML request.
+    try {
+      await this.refreshMetadata('startup');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`IdP metadata startup refresh failed: ${message}`);
+    }
   }
 
   getSigningCertificates(): string[] {
@@ -63,14 +70,22 @@ export class IdpMetadataService implements OnModuleInit {
           throw new Error('No signing certificates found in IDPSSODescriptor');
         }
 
-        await this.persistCache(
-          entityId ?? this.config.get<string>('SAML_IDP_ENTITY_ID') ?? '',
-          signingCerts,
-        );
+        // Use the freshly fetched certs immediately; persisting is best-effort
+        // so a transient DB issue can't discard a successful metadata refresh.
         this.cachedCerts = signingCerts;
         this.logger.log(
           `Refreshed IdP metadata (${reason}): ${signingCerts.length} signing certificate(s)`,
         );
+
+        try {
+          await this.persistCache(
+            entityId ?? this.config.get<string>('SAML_IDP_ENTITY_ID') ?? '',
+            signingCerts,
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Could not persist IdP metadata cache (${reason}): ${message}`);
+        }
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -78,19 +93,24 @@ export class IdpMetadataService implements OnModuleInit {
       }
     }
 
-    const [persisted] = await this.db
-      .select()
-      .from(idpMetadataCache)
-      .where(eq(idpMetadataCache.id, IDP_METADATA_CACHE_ID))
-      .limit(1);
+    try {
+      const [persisted] = await this.db
+        .select()
+        .from(idpMetadataCache)
+        .where(eq(idpMetadataCache.id, IDP_METADATA_CACHE_ID))
+        .limit(1);
 
-    if (persisted) {
-      const certs = this.parseStoredCerts(persisted.signingCerts);
-      if (certs.length > 0) {
-        this.cachedCerts = certs;
-        this.logger.warn(`Using persisted IdP signing certificates (${reason})`);
-        return;
+      if (persisted) {
+        const certs = this.parseStoredCerts(persisted.signingCerts);
+        if (certs.length > 0) {
+          this.cachedCerts = certs;
+          this.logger.warn(`Using persisted IdP signing certificates (${reason})`);
+          return;
+        }
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Could not read persisted IdP certificates (${reason}): ${message}`);
     }
 
     if (envCert) {

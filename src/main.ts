@@ -7,13 +7,11 @@ import { runMigrations } from './db/migrate';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
 
-  const config = app.get(ConfigService);
-
-  // Apply pending database migrations on boot so every environment is in sync.
-  const databaseUrl = config.get<string>('DATABASE_URL');
-  if (databaseUrl && config.get<string>('RUN_MIGRATIONS_ON_BOOT') !== 'false') {
+  // Apply pending migrations BEFORE creating the app, so module init hooks
+  // (e.g. IdP metadata cache) can safely query their tables on first boot.
+  const databaseUrl = process.env.DATABASE_URL;
+  if (databaseUrl && process.env.RUN_MIGRATIONS_ON_BOOT !== 'false') {
     try {
       await runMigrations(databaseUrl);
       logger.log('Database migrations applied');
@@ -21,6 +19,10 @@ async function bootstrap() {
       logger.error(`Failed to apply migrations: ${(error as Error).message}`);
     }
   }
+
+  const app = await NestFactory.create(AppModule);
+
+  const config = app.get(ConfigService);
 
   // Routes are served under /api/V<version>/... (e.g. /api/V1/auth/saml/metadata).
   app.setGlobalPrefix('api');
