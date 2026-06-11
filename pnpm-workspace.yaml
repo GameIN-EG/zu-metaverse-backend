@@ -1,0 +1,7 @@
+# Explicit build-script decisions for dependencies with install scripts.
+# Required by pnpm v11 — without an explicit decision pnpm errors with
+# ERR_PNPM_IGNORED_BUILDS, which would break the Railway build/start step.
+allowBuilds:
+  '@scarf/scarf': false # telemetry only; no build needed
+  esbuild: true
+  unrs-resolver: true
