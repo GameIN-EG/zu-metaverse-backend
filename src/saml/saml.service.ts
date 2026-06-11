@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { SAML } from '@node-saml/node-saml';
 import type { Profile } from '@node-saml/node-saml';
 import { SamlConfigService } from './saml-config.service';
@@ -17,6 +17,13 @@ export class SamlService {
   }
 
   async validatePostResponse(body: Record<string, string>): Promise<Profile> {
+    if (!body?.SAMLResponse) {
+      throw new BadRequestException(
+        'Missing SAMLResponse. This endpoint is the SAML Assertion Consumer Service ' +
+          'and is called by the Identity Provider after authentication.',
+      );
+    }
+
     const saml = this.createSamlClient();
     const result = await saml.validatePostResponseAsync(body);
     if (!result.profile) {
